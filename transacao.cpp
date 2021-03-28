@@ -19,34 +19,30 @@
 #include <string.h>
 #include <time.h>
 
-/*Objeto de conexão*/
+// /Objeto de conexão/
 PGconn *conn = NULL;
-/*Ponteiro de resultado*/
+// /Ponteiro de resultado/
 PGresult *result;
-
 
 char insertWithErrosRollback(){
    PQexec(conn, "INSERT INTO product(eid, description) VALUES (1, stethoscope)");
    return true;
 }
 
-char insertWithCommit(char sql[]){
-   PQexec(conn, sql);
-   return true;
- }
-
-
-int mountSQL(){
-   FILE *arq; 
-   arq = fopen("data.csv", "r"); 
-   int buffer_size = 1024;
-   char buffer[1024];
-   int cont = 25;
-
+char explicitTransaction(char buffer[], int buffer_size, FILE *arq, int cont){
+   
    //monitorar o tempo de execução
    clock_t tempo;
    tempo = clock();
 
+   result = PQexec(conn, "BEGIN");
+   // if (PQresultStatus(result) != PGRES_COMMAND_OK)
+   //  {
+   //      printf("BEGIN command failed: %s", PQerrorMessage(conn));
+   //      PQclear(result);
+   //  }
+
+   printf("BEGIN START\n");
    while (fgets(buffer, buffer_size, arq))
    {
       cont++;
@@ -55,7 +51,7 @@ int mountSQL(){
       char str3[buffer_size] = "');";
       char szBuffer[1024];
 
-      printf("\n%d\n", cont);
+      //printf("\n%d\n", cont);
       snprintf(szBuffer, sizeof (szBuffer), "%d",cont);
       strcat(sql, szBuffer);
       strcat(sql, str2);
@@ -65,23 +61,75 @@ int mountSQL(){
       printf("\n%s\n", sql);
       
       //inserção 
-      insertWithCommit(sql);
+      PQexec(conn, sql);
+      // insert(sql);
+
+   }
+   PQexec(conn,"COMMIT");
+   printf("END BEGIN\n");
+   printf("Total de Linhas: %d\n", cont);
+   printf("Tempo :%f \n",(clock() - tempo) / (double)CLOCKS_PER_SEC);
+
+   
+   return true;
+
+}
+
+char implicitTransaction(char buffer[], int buffer_size, FILE *arq, int cont){
+   
+   //monitorar o tempo de execução
+   clock_t tempo;
+   tempo = clock();
+   while (fgets(buffer, buffer_size, arq))
+   {
+      cont++;
+      char sql[buffer_size] = "INSERT INTO product(eid, description) VALUES (";
+      char str2[buffer_size] = ", '";
+      char str3[buffer_size] = "');";
+      char szBuffer[1024];
+
+      //printf("\n%d\n", cont);
+      snprintf(szBuffer, sizeof (szBuffer), "%d",cont);
+      strcat(sql, szBuffer);
+      strcat(sql, str2);
+      strcat(sql, buffer);
+      strcat(sql, str3);
+
+      printf("\n%s\n", sql);
+      
+      //inserção 
+      PQexec(conn, sql);
       // insert(sql);
 
    }
    printf("Total de Linhas: %d\n", cont);
    printf("Tempo :%f \n",(clock() - tempo) / (double)CLOCKS_PER_SEC);
 
+   
+   return true;
+ }
+
+int mountSQL(){
+   FILE *arq; 
+   arq = fopen("data.csv", "r"); 
+   int buffer_size = 1024;
+   char buffer[1048];
+   int cont = 25;
+
+
+   // implicitTransaction(buffer, buffer_size, arq, cont);
+   // explicitTransaction(buffer, buffer_size, arq, cont);
+   // testInsert(buffer, buffer_size, arq, cont);
+   insertWithErrosRollback();
    fclose(arq);
    return true;
 }
 
-
 int main()
 {
 
-   /*realiza a conexão*/
-   conn = PQconnectdb("host=localhost dbname=TESTE user=vini password=1234 hostaddr=127.0.0.1 port=5432");
+   // /realiza a conexão/
+   conn = PQconnectdb("dbname=TESTE user=vini password=1234");
     
    if(PQstatus(conn) == CONNECTION_OK)
    {
@@ -99,7 +147,7 @@ int main()
       return -1;
    }
     
-    /*Verifica se a conexão está aberta e a encerra*/
+   //  /Verifica se a conexão está aberta e a encerra/
    if(conn != NULL)
       PQfinish(conn);
 }
